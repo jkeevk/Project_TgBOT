@@ -64,7 +64,7 @@ class Fill_DB:
         self.cur.close()
         self.conn.close()
 
-    def get_settings():
+    def get_settings(file_name: str='settings.ini') -> tuple:
         """
         Читает данные из конфигурационного файла.
 
@@ -72,10 +72,10 @@ class Fill_DB:
             file_name (str): Имя файла конфигурации.
 
         Возвращает:
-            Tuple[str, str]: Данные для подключения к БД
+            tuple: Данные для подключения к БД
         """
         config = configparser.ConfigParser()
-        config.read("settings.ini")
+        config.read(file_name)
         database = config["SETTINGS"]["database"]
         user = config["SETTINGS"]["user"]
         password = config["SETTINGS"]["password"]
