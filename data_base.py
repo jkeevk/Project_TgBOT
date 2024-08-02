@@ -2,16 +2,18 @@ import requests
 import psycopg2
 import configparser
 
+
 class Fill_DB:
     """Класс для создания схемы БД, её наполнения с помощью сервисов Yandex API и Free Dictionary API.
 
-    Этот класс предназначен для работы с базой данных, включая 
-    создание ее схемы и наполнения данными, полученными через 
-    различные API. Он обеспечивает методы для создания как 
-    самой базы данных, так и таблиц, а также для работы 
+    Этот класс предназначен для работы с базой данных, включая
+    создание ее схемы и наполнения данными, полученными через
+    различные API. Он обеспечивает методы для создания как
+    самой базы данных, так и таблиц, а также для работы
     с переводами и примерами слов.
 
     Методы:
+        get_settings: Читает данные из конфигурационного файла.
         create_database: Создает базу данных, если она не существует.
         create_tables: Создает необходимые таблицы для хранения данных.
         get_token: Получает токен доступа для Yandex Dictionary API.
@@ -20,20 +22,26 @@ class Fill_DB:
         load_data: Наполняет базу данных данными, полученными через API.
 
     Примечания:
-        Убедитесь, что у вас есть все необходимые ключи и токены 
+        Убедитесь, что у вас есть все необходимые ключи и токены
         для доступа к API перед использованием методов.
         Ключи хранятся в файле настроек settings.ini
     """
 
-    def __init__(self) -> None:
+    def __init__(self, database: str) -> None:
         """
         Инициализация соединения с базой данных PostgreSQL.
+
+        Параметры:
+            database (str): Имя Базы Данных.
 
         Создает соединение с базой данных 'easyenglish_db', настраивает курсор и
         устанавливает режим автокоммита для всех транзакций.
         """
-        self.conn = psycopg2.connect(database='easyenglish_db', user='postgres', password='12341', host='localhost',
-                port='5432')
+        self.database = database
+        database, user, password, host, port = Fill_DB.get_settings()
+        self.conn = psycopg2.connect(
+            database=self.database, user=user, password=password, host=host, port=port
+        )
         self.cur = self.conn.cursor()
         self.conn.autocommit = True
 
@@ -56,24 +64,40 @@ class Fill_DB:
         self.cur.close()
         self.conn.close()
 
-    def create_database(self=None) -> None:
+    def get_settings():
+        """
+        Читает данные из конфигурационного файла.
+
+        Параметры:
+            file_name (str): Имя файла конфигурации.
+
+        Возвращает:
+            Tuple[str, str]: Данные для подключения к БД
+        """
+        config = configparser.ConfigParser()
+        config.read("settings.ini")
+        database = config["SETTINGS"]["database"]
+        user = config["SETTINGS"]["user"]
+        password = config["SETTINGS"]["password"]
+        host = config["SETTINGS"]["host"]
+        port = config["SETTINGS"]["port"]
+        return database, user, password, host, port
+
+    def create_database() -> None:
         """
         Создает новую базу данных с именем 'easyenglish_db'.
 
         Метод соединяется с базой данных 'postgres', создает новую базу данных и
         выводит сообщение об успешном создании. Если произошла ошибка, она будет выведена.
         """
+        database, user, password, host, port = Fill_DB.get_settings()
         try:
             conn = psycopg2.connect(
-                database="postgres",
-                user='postgres',
-                password='12341',
-                host='localhost',
-                port= '5432'
+                database=database, user=user, password=password, host=host, port=port
             )
             cursor = conn.cursor()
             conn.autocommit = True
-            
+
             sql = """ CREATE database easyenglish_db """
 
             cursor.execute(sql)
@@ -82,7 +106,6 @@ class Fill_DB:
         except Exception as e:
             print(e)
 
-
     def create_tables(self) -> None:
         """
         Создает таблицы в базе данных, если они не существуют.
@@ -90,31 +113,35 @@ class Fill_DB:
         Создаются три таблицы: 'words', 'users' и 'words_to_users'. Метод выводит
         сообщение об успешном создании таблиц.
         """
-        self.cur.execute("""
+        self.cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS words(
             word_id SERIAL PRIMARY KEY,
             word VARCHAR(40) UNIQUE NOT NULL,
             translation VARCHAR(40) NOT NULL,
             definition VARCHAR(900)
             );
-        """)
+        """
+        )
 
-        self.cur.execute("""
+        self.cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS users(
             user_id SERIAL PRIMARY KEY);
-        """)
+        """
+        )
 
-        self.cur.execute("""
+        self.cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS words_to_users(
             word_id INTEGER NOT NULL REFERENCES words(word_id),
             user_id INTEGER NOT NULL REFERENCES users(user_id),
             learn_counter INTEGER NOT NULL,
             CONSTRAINT pk_word_chat PRIMARY KEY (word_id, user_id)
             );
-        """)
+        """
+        )
         print("Tables has been created successfully")
-
-
 
     def get_token(self) -> tuple:
         """
@@ -132,7 +159,6 @@ class Fill_DB:
         self.url = config["YANDEX"]["url"]
         return self.token_ya, self.url
 
-
     def translate_word(self, word: str) -> str:
         """
         Переводит указанное слово с английского на русский язык.
@@ -146,19 +172,14 @@ class Fill_DB:
             str: Переведенное слово на русский языке или сообщение об ошибке.
         """
         token_ya, url = self.get_token()
-        param = {'key': token_ya,
-                'lang': 'en-ru',
-                'text': word,
-                'ui': 'en'
-                }
+        param = {"key": token_ya, "lang": "en-ru", "text": word, "ui": "en"}
         try:
             response = requests.get(url=url, params=param).json()
-            return response['def'][0]['tr'][0]['text']
+            return response["def"][0]["tr"][0]["text"]
         except Exception as e:
             return e
-        
 
-    def get_example(self, word:str) -> str:
+    def get_example(self, word: str) -> str:
         """
         Получает пример использования указанного слова из API.
 
@@ -170,19 +191,17 @@ class Fill_DB:
         Возвращает:
             str: Пример использования слова или его определение, если пример отсутствует.
         """
-        url = 'https://api.dictionaryapi.dev/api/v2/entries/en/'
-        response = requests.get(url=url+word).json()
+        url = "https://api.dictionaryapi.dev/api/v2/entries/en/"
+        response = requests.get(url=url + word).json()
         try:
             for i in response[0]["meanings"][0]["definitions"]:
-                if 'example' in i:
-                    example = i['example']
+                if "example" in i:
+                    example = i["example"]
                     return example
                 else:
-                    return response[0]["meanings"][0]["definitions"][0]['definition']
+                    return response[0]["meanings"][0]["definitions"][0]["definition"]
         except Exception as e:
             return e
-
-
 
     def load_data(self, file_name: str) -> None:
         """
@@ -196,33 +215,44 @@ class Fill_DB:
         Возвращает:
             None
         """
-        with open(file_name,  encoding='utf-8') as f:
+        with open(file_name, encoding="utf-8") as f:
             for i in f.readlines():
-                word = i.capitalize().replace('\n', '')
+                word = i.capitalize().replace("\n", "")
                 translation = self.translate_word(word).capitalize()
                 definition = self.get_example(word)
                 if type(definition) is KeyError:
                     definition = "Sorry pal, we couldn't find definitions for the word you were looking for"
-                    self.cur.execute("""
+                    self.cur.execute(
+                        """
                     INSERT INTO words(word, translation, definition) 
                     VALUES(%s, %s, %s);
-                    """, (word, translation, definition))
+                    """,
+                        (word, translation, definition),
+                    )
                 else:
-                    self.cur.execute("""
+                    self.cur.execute(
+                        """
                         INSERT INTO words(word, translation, definition) 
                         VALUES(%s, %s, %s);
-                        """, (word, translation, definition))
-                    print(f'Word {word} has been added')
-            print(f'Total uploaded words: {f.readlines().__len__()}')
+                        """,
+                        (word, translation, definition),
+                    )
+                    print(f"Word {word} has been added")
+            print(f"Total uploaded words: {f.readlines().__len__()}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    database = "easyenglish_db"
     Fill_DB.create_database()
-    with Fill_DB() as fill_data_base:
-        print('Status OK' if fill_data_base.conn.closed == 0 else 'Connection is closed')
+    with Fill_DB(database) as fill_data_base:
+        print(
+            "Status OK" if fill_data_base.conn.closed == 0 else "Connection is closed"
+        )
         fill_data_base.create_tables()
-        fill_data_base.load_data('words.txt')
-        print('Completed!')
-    print('Connection is closed' if fill_data_base.conn.closed == 1 else 'Close connection!')
-
-
+        fill_data_base.load_data("words.txt")
+        print("Completed!")
+    print(
+        "Connection is closed"
+        if fill_data_base.conn.closed == 1
+        else "Close connection!"
+    )
